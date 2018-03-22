@@ -71,6 +71,7 @@ public class WinEvtLogFunction extends AbstractFunction<Map<String, String>> {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public FunctionDescriptor<Map<String, String>> descriptor() {
         return FunctionDescriptor.<Map<String, String>>builder()
                 .name(NAME)
