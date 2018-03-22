@@ -1,7 +1,6 @@
 package org.reidrankin.graylogplugins.winevtlog;
 
 import org.graylog.plugins.pipelineprocessor.EvaluationContext;
-import org.graylog.plugins.pipelineprocessor.ast.expressions.Expression;
 import org.graylog.plugins.pipelineprocessor.ast.functions.AbstractFunction;
 import org.graylog.plugins.pipelineprocessor.ast.functions.FunctionArgs;
 import org.graylog.plugins.pipelineprocessor.ast.functions.FunctionDescriptor;
@@ -10,7 +9,6 @@ import com.google.inject.TypeLiteral;
 import java.util.Collections;
 import java.util.Map;
 import java.util.LinkedHashMap;
-import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -32,8 +30,8 @@ public class WinEvtLogFunction extends AbstractFunction<Map<String, String>> {
             .description("Prefix for returned keys.")
             .build();
 
-    private static final ArrayList<Pattern> winEvtLogPatterns = new ArrayList<Pattern>();
-    
+    private static final Pattern masterPattern = Pattern.compile("^((?:.(?!    ))*?.)    (?: *(?:((?:[^\\s]+? )*?[^\\s]+?):   )?((?:[^\\s]+? )*?[^\\s]+?):  ?((?:(?:.(?!  ))*).)  ){1,} *(.*)$");
+    private static final Pattern detailPattern = Pattern.compile(" *(?:((?:[^\\s]+? )*?[^\\s]+?):   )?((?:[^\\s]+? )*?[^\\s]+?):  ?((?:(?:.(?!  ))*).)  ");
     @Override
     public Map<String, String> evaluate(FunctionArgs functionArgs, EvaluationContext evaluationContext) {
         final String input = inputParam.required(functionArgs, evaluationContext);
@@ -45,21 +43,26 @@ public class WinEvtLogFunction extends AbstractFunction<Map<String, String>> {
 
         final Map<String, String> map = new LinkedHashMap<>();
         try {
-          for (int i = 0; true; i++) {
-            Pattern pattern = ((winEvtLogPatterns.size() > i) ? winEvtLogPatterns.get(i) : null);
-            if (pattern == null) {
-              pattern = Pattern.compile("^((?:.(?!    ))*?.)(?:    (?: *(?:((?:[^\\s]+? )*?[^\\s]+?):   )?((?:[^\\s]+? )*?[^\\s]+?):  ?((?:(?:.(?!  ))*).)  ){" + Integer.toString(i + 1) + "}) *(.*)$");
-              winEvtLogPatterns.add(pattern);
+          final Matcher masterMatcher = masterPattern.matcher(input);
+          if (masterMatcher.matches()) {
+            map.put(prefix + "message", masterMatcher.group(1));
+            map.put(prefix + "description", masterMatcher.group(5));
+
+            final Matcher detailMatcher = detailPattern.matcher(input);
+            detailMatcher.region(masterMatcher.end(1), input.length());
+
+            while (detailMatcher.find()) {
+              if (detailMatcher.group(2) == null || detailMatcher.group(3) == null) continue;
+
+              String fieldName = prefix;
+              if (detailMatcher.group(1) != null && detailMatcher.group(1).length() > 0) {
+                fieldName += detailMatcher.group(1) + "__";
+              }
+              fieldName += detailMatcher.group(2);
+              fieldName = fieldName.replace(" ", "_");
+
+              map.put(fieldName, detailMatcher.group(3));
             }
-            Matcher matcher = pattern.matcher(input);
-            if (!matcher.find()) break;
-            if (matcher.group(3) == null || matcher.group(4) == null) break;
-            
-            String fieldName = prefix;
-            if ((matcher.group(2) != null) && (matcher.group(2).length() > 0)) fieldName += matcher.group(2) + "__";
-            fieldName += matcher.group(3);
-            fieldName = fieldName.replace(" ", "_");
-            map.put(fieldName, matcher.group(4));
           }
         } catch (Exception e) {
           LOG.error("Error while parsing WinEvtLog message: {}", input, e);

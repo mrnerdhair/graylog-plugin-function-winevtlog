@@ -6,9 +6,6 @@ import com.google.inject.multibindings.MapBinder;
 import org.graylog.plugins.pipelineprocessor.ast.functions.Function;
 import org.graylog2.plugin.PluginModule;
 
-import java.util.Collections;
-import java.util.Set;
-
 public class WinEvtLogModule extends PluginModule {
     @Override
     protected void configure() {
